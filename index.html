@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Corben:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="app.css?v=3" />
+    <link rel="stylesheet" href="app.css?v=4" />
   </head>
   <body>
     <div class="app">
@@ -259,6 +259,20 @@
                 </div>
                 
                 <div class="edit-section" style="margin-top: 20px;">
+                  <label id="editCollectionColorLabel" class="control-label">Card Color</label>
+                  <div class="color-palette-picker" id="editCollectionColorPicker" style="margin-top: 8px;"></div>
+                </div>
+
+                <div class="edit-section" style="margin-top: 20px;">
+                  <label id="editCollectionVisibilityLabel" class="control-label">Sharing &amp; Visibility</label>
+                  <div class="status-segmented seg-full" id="editCollectionVisibilitySegmented" style="margin-top: 8px;">
+                    <button data-visibility="Private" type="button">Private</button>
+                    <button data-visibility="Friends" type="button">Friends</button>
+                    <button data-visibility="Public" type="button">Public</button>
+                  </div>
+                </div>
+
+                <div class="edit-section" style="margin-top: 20px;">
                   <label id="shareCollectionLabel" class="control-label">Share Collection</label>
                   <button id="shareCollectionBtn" class="secondary-btn" type="button" style="width: 100%; margin-top: 6px;">
                     📤 Share Collection List
@@ -266,14 +280,14 @@
                 </div>
 
                 <div class="edit-section" style="margin-top: 20px;">
-                  <label class="control-label">Batch Actions</label>
+                  <label id="batchActionsLabel" class="control-label">Batch Actions</label>
                   <button id="batchDeleteModeBtn" class="secondary-btn is-danger-alt" type="button" style="width: 100%; margin-top: 6px;">
                     🗑️ Batch Select & Delete
                   </button>
                 </div>
-                
+
                 <div class="edit-section" style="margin-top: 24px; display: flex; flex-direction: column; gap: 10px;">
-                  <label class="control-label">Manual Reordering</label>
+                  <label id="manualReorderingLabel" class="control-label">Manual Reordering</label>
                   <p class="micro-label" style="text-transform: none; font-size: 0.75rem; margin-top: -6px;">Move items up or down to set a custom ordering.</p>
                   <div id="reorderList" class="reorder-list"></div>
                 </div>
@@ -321,9 +335,10 @@
                 <div class="form-grid" style="grid-template-columns: 1fr;">
                   <label>
                     <span>Sharing & Visibility</span>
-                    <div class="status-segmented" id="collectionVisibilitySegmented" style="margin-top: 6px;">
+                    <div class="status-segmented seg-full" id="collectionVisibilitySegmented" style="margin-top: 6px;">
                       <button class="is-active" data-visibility="Private" type="button">Private</button>
                       <button data-visibility="Friends" type="button">Friends</button>
+                      <button data-visibility="Public" type="button">Public</button>
                     </div>
                   </label>
                 </div>
@@ -450,7 +465,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage-compat.js"></script>
 
-    <script src="data.js?v=3"></script>
-    <script src="app.js?v=3"></script>
+    <script src="data.js?v=4"></script>
+    <script src="app.js?v=4"></script>
   </body>
 </html>

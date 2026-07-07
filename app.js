@@ -223,24 +223,26 @@ const collectionPalette = [
   { name: "Blue", color: "#0a58ff", accent: "radial-gradient(circle at 50% 55%, #0a58ff 0%, rgba(10, 88, 255, 0.5) 25%, rgba(10, 88, 255, 0.15) 60%, rgba(10, 88, 255, 0) 90%), #edf3ff" }
 ];
 
-function renderCollectionColorPicker() {
-  const picker = document.getElementById("collectionColorPicker");
+// Reusable swatch picker — used by both the Add and Edit collection sheets.
+function buildColorPicker(containerId, selectedAccent, onSelect) {
+  const picker = document.getElementById(containerId);
   if (!picker) return;
-  picker.innerHTML = collectionPalette.map((item, idx) => {
-    return `<button class="color-option ${idx === 0 ? "is-selected" : ""}" 
-                    type="button" 
-                    data-accent="${item.accent}" 
-                    style="background: ${item.color};" 
-                    aria-label="${item.name}">
-            </button>`;
+  picker.innerHTML = collectionPalette.map(item => {
+    const sel = item.accent === selectedAccent ? "is-selected" : "";
+    return `<button class="color-option ${sel}" type="button" data-accent="${item.accent}" style="background: ${item.color};" aria-label="${item.name}"></button>`;
   }).join("");
-  
   picker.querySelectorAll(".color-option").forEach(btn => {
     btn.addEventListener("click", () => {
       picker.querySelectorAll(".color-option").forEach(b => b.classList.remove("is-selected"));
       btn.classList.add("is-selected");
-      selectedCollectionAccent = btn.dataset.accent;
+      onSelect(btn.dataset.accent);
     });
+  });
+}
+
+function renderCollectionColorPicker() {
+  buildColorPicker("collectionColorPicker", collectionPalette[0].accent, (accent) => {
+    selectedCollectionAccent = accent;
   });
 }
 
@@ -342,9 +344,22 @@ function updateLanguage() {
     const saveBtn = document.getElementById("saveCollectionNameBtn");
     if (saveBtn) saveBtn.textContent = i18n[state.lang].renameBtn;
     
-    const batchLabel = editSheet.querySelectorAll('.edit-section label')[2];
+    const colorLabel = document.getElementById("editCollectionColorLabel");
+    if (colorLabel) colorLabel.textContent = i18n[state.lang].editCollectionColorLabel;
+
+    const editVisLabel = document.getElementById("editCollectionVisibilityLabel");
+    if (editVisLabel) editVisLabel.textContent = i18n[state.lang].addCollectionVisibilityLabel;
+
+    const editVisBtns = document.querySelectorAll("#editCollectionVisibilitySegmented button");
+    if (editVisBtns.length >= 3) {
+      editVisBtns[0].textContent = i18n[state.lang].visibilityPrivate;
+      editVisBtns[1].textContent = i18n[state.lang].visibilityFriends;
+      editVisBtns[2].textContent = i18n[state.lang].visibilityPublic;
+    }
+
+    const batchLabel = document.getElementById("batchActionsLabel");
     if (batchLabel) batchLabel.textContent = i18n[state.lang].batchActions;
-    
+
     const batchBtn = document.getElementById("batchDeleteModeBtn");
     if (batchBtn) batchBtn.innerHTML = `🗑️ ${i18n[state.lang].batchDeletePrompt}`;
 
@@ -353,8 +368,8 @@ function updateLanguage() {
 
     const shareBtn = document.getElementById("shareCollectionBtn");
     if (shareBtn) shareBtn.innerHTML = i18n[state.lang].shareCollectionBtn;
-    
-    const reorderLabel = editSheet.querySelectorAll('.edit-section label')[3];
+
+    const reorderLabel = document.getElementById("manualReorderingLabel");
     if (reorderLabel) reorderLabel.textContent = i18n[state.lang].manualReordering;
     
     const reorderSub = editSheet.querySelector('.edit-section p');
@@ -394,9 +409,10 @@ function updateLanguage() {
     if (submitBtn) submitBtn.textContent = i18n[state.lang].addCollectionSubmitBtn;
     
     const visBtns = document.querySelectorAll("#collectionVisibilitySegmented button");
-    if (visBtns.length >= 2) {
+    if (visBtns.length >= 3) {
       visBtns[0].textContent = i18n[state.lang].visibilityPrivate;
       visBtns[1].textContent = i18n[state.lang].visibilityFriends;
+      visBtns[2].textContent = i18n[state.lang].visibilityPublic;
     }
   }
 
@@ -573,9 +589,18 @@ function getCollectionItems(collectionId) {
   return items.filter(item => item.collectionId === collectionId);
 }
 
+// Single source of truth: a collection's count is always how many items it has.
+// Keeps home-card counts, stickers, and the detail header in sync automatically.
+function syncCollectionCounts() {
+  collections.forEach(c => {
+    c.count = items.filter(item => item.collectionId === c.id).length;
+  });
+}
+
 function renderCollections() {
   collectionGrid.innerHTML = "";
 
+  syncCollectionCounts();
   const n = collections.length;
   const totalItems = collections.reduce((s, c) => s + c.count, 0);
 
@@ -595,7 +620,10 @@ function renderCollections() {
   sortedCollections.forEach((collection) => {
     const collectionItems = getCollectionItems(collection.id);
     const stickerCount = Math.min(collection.count, 6);
-    const stickers = collectionItems.slice(0, stickerCount);
+    // Real photos first, so uploaded items replace the gradient placeholders.
+    const stickers = [...collectionItems]
+      .sort((a, b) => (b.image ? 1 : 0) - (a.image ? 1 : 0))
+      .slice(0, stickerCount);
 
     const card = document.createElement("div");
     card.className = "deck-card";
@@ -727,7 +755,9 @@ function renderHolisticGrid() {
   collections.forEach((collection, idx) => {
     const collectionItems = getCollectionItems(collection.id);
     const holStickerCount = Math.min(collection.count, 6);
-    const stickers = collectionItems.slice(0, holStickerCount);
+    const stickers = [...collectionItems]
+      .sort((a, b) => (b.image ? 1 : 0) - (a.image ? 1 : 0))
+      .slice(0, holStickerCount);
 
     const card = document.createElement("button");
     card.type = "button";
@@ -1695,60 +1725,12 @@ function extractObjectFromImage(file) {
     const reader = new FileReader();
     reader.addEventListener("load", () => {
       img.addEventListener("load", () => {
-        const maxSize = 720;
-        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-        const canvas = document.createElement("canvas");
-        const width = Math.max(1, Math.round(img.width * scale));
-        const height = Math.max(1, Math.round(img.height * scale));
-        canvas.width = width;
-        canvas.height = height;
-        const context = canvas.getContext("2d", { willReadFrequently: true });
-        context.drawImage(img, 0, 0, width, height);
-        const imageData = context.getImageData(0, 0, width, height);
-        const data = imageData.data;
-        const cornerSamples = [
-          [0, 0],
-          [width - 1, 0],
-          [0, height - 1],
-          [width - 1, height - 1],
-        ].map(([x, y]) => {
-          const index = (y * width + x) * 4;
-          return [data[index], data[index + 1], data[index + 2]];
-        });
-        const bg = cornerSamples.reduce(
-          (acc, sample) => acc.map((value, index) => value + sample[index] / cornerSamples.length),
-          [0, 0, 0]
-        );
-        let minX = width;
-        let minY = height;
-        let maxX = 0;
-        let maxY = 0;
-        for (let y = 0; y < height; y += 1) {
-          for (let x = 0; x < width; x += 1) {
-            const index = (y * width + x) * 4;
-            const distance = Math.hypot(data[index] - bg[0], data[index + 1] - bg[1], data[index + 2] - bg[2]);
-            const nearEdge = x < 8 || y < 8 || x > width - 9 || y > height - 9;
-            if (distance < (nearEdge ? 58 : 42)) {
-              data[index + 3] = 0;
-            } else {
-              minX = Math.min(minX, x);
-              minY = Math.min(minY, y);
-              maxX = Math.max(maxX, x);
-              maxY = Math.max(maxY, y);
-            }
-          }
+        try {
+          resolve(isolateSubject(img));
+        } catch (err) {
+          // Never fail the add flow because of the cut-out — fall back to a plain crop.
+          try { resolve(centerCrop(img)); } catch (e) { reject(e); }
         }
-        context.putImageData(imageData, 0, 0);
-        const pad = 18;
-        const cropX = Math.max(0, minX - pad);
-        const cropY = Math.max(0, minY - pad);
-        const cropW = Math.min(width - cropX, Math.max(1, maxX - minX + pad * 2));
-        const cropH = Math.min(height - cropY, Math.max(1, maxY - minY + pad * 2));
-        const crop = document.createElement("canvas");
-        crop.width = cropW;
-        crop.height = cropH;
-        crop.getContext("2d").drawImage(canvas, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
-        resolve(crop.toDataURL("image/png"));
       });
       img.addEventListener("error", reject);
       img.src = reader.result;
@@ -1756,6 +1738,139 @@ function extractObjectFromImage(file) {
     reader.addEventListener("error", reject);
     reader.readAsDataURL(file);
   });
+}
+
+// Isolate the main subject from a (possibly cluttered) photo:
+//   1. Region-grow the background inward from the border — flows around
+//      gradients/vignettes but stops at the subject's edge.
+//   2. Keep only the single foreground blob with the best area×centredness
+//      score, dropping stray clutter elsewhere in the frame.
+//   3. Feather the mask edge, then tight-crop to the subject.
+// Falls back to a centred square crop when the mask looks unreliable
+// (e.g. the subject fills the whole frame or nothing distinct is found).
+function isolateSubject(img) {
+  const maxSize = 640;
+  const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const d = imageData.data;
+  const N = w * h;
+
+  // ── 1. Region-grow background inward from the border ──
+  const isBg = new Uint8Array(N);
+  const stack = new Int32Array(N);
+  let sp = 0;
+  const TOL = 40; // max per-pixel channel-sum difference to count as "same region"
+  const seed = (p) => { if (!isBg[p]) { isBg[p] = 1; stack[sp++] = p; } };
+  for (let x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
+  for (let y = 0; y < h; y++) { seed(y * w); seed(y * w + (w - 1)); }
+  while (sp > 0) {
+    const p = stack[--sp];
+    const pi = p * 4;
+    const x = p % w;
+    const y = (p / w) | 0;
+    const tryN = (np) => {
+      if (isBg[np]) return;
+      const ni = np * 4;
+      const dist = Math.abs(d[pi] - d[ni]) + Math.abs(d[pi + 1] - d[ni + 1]) + Math.abs(d[pi + 2] - d[ni + 2]);
+      if (dist <= TOL) { isBg[np] = 1; stack[sp++] = np; }
+    };
+    if (x > 0) tryN(p - 1);
+    if (x < w - 1) tryN(p + 1);
+    if (y > 0) tryN(p - w);
+    if (y < h - 1) tryN(p + w);
+  }
+
+  // ── 2. Keep the largest foreground blob nearest the centre ──
+  const label = new Int32Array(N);
+  let bestLabel = 0, bestScore = -1, cur = 0;
+  const cx = w / 2, cy = h / 2, diag = Math.hypot(w, h);
+  for (let start = 0; start < N; start++) {
+    if (isBg[start] || label[start]) continue;
+    cur++;
+    let area = 0, centreSum = 0;
+    sp = 0; stack[sp++] = start; label[start] = cur;
+    while (sp > 0) {
+      const q = stack[--sp];
+      area++;
+      const qx = q % w, qy = (q / w) | 0;
+      centreSum += 1 - Math.hypot(qx - cx, qy - cy) / diag; // ~1 at centre, ~0 at corners
+      const tryF = (nq) => { if (!isBg[nq] && !label[nq]) { label[nq] = cur; stack[sp++] = nq; } };
+      if (qx > 0) tryF(q - 1);
+      if (qx < w - 1) tryF(q + 1);
+      if (qy > 0) tryF(q - w);
+      if (qy < h - 1) tryF(q + w);
+    }
+    const score = area * (centreSum / area); // area weighted by mean centredness
+    if (score > bestScore) { bestScore = score; bestLabel = cur; }
+  }
+
+  // Everything except the winning blob becomes transparent
+  let fg = 0, minX = w, minY = h, maxX = 0, maxY = 0;
+  for (let p = 0; p < N; p++) {
+    if (bestLabel && label[p] === bestLabel) {
+      fg++;
+      const x = p % w, y = (p / w) | 0;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    } else {
+      d[p * 4 + 3] = 0;
+    }
+  }
+
+  // ── Fallback when the mask is untrustworthy ──
+  const frac = fg / N;
+  if (fg === 0 || frac < 0.03 || frac > 0.97) return centerCrop(img);
+
+  // ── 3. Feather the 1px rim to kill jagged edges ──
+  const alpha = new Uint8ClampedArray(N);
+  for (let p = 0; p < N; p++) alpha[p] = d[p * 4 + 3];
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x;
+      if (!alpha[p]) continue;
+      const rim =
+        (x > 0 && !alpha[p - 1]) || (x < w - 1 && !alpha[p + 1]) ||
+        (y > 0 && !alpha[p - w]) || (y < h - 1 && !alpha[p + w]);
+      if (rim) d[p * 4 + 3] = 130;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+
+  // ── Tight crop to the subject with a little padding ──
+  const pad = Math.round(Math.max(w, h) * 0.04);
+  const sx = Math.max(0, minX - pad);
+  const sy = Math.max(0, minY - pad);
+  const sw = Math.min(w - sx, maxX - minX + 1 + pad * 2);
+  const sh = Math.min(h - sy, maxY - minY + 1 + pad * 2);
+  const out = document.createElement("canvas");
+  out.width = sw;
+  out.height = sh;
+  out.getContext("2d").drawImage(canvas, sx, sy, sw, sh, 0, 0, sw, sh);
+  return out.toDataURL("image/png");
+}
+
+// Safe fallback: centred square crop (85%), no cut-out, capped at 640px.
+function centerCrop(img) {
+  const side = Math.min(img.width, img.height);
+  const cropSide = Math.max(1, Math.round(side * 0.85));
+  const sx = Math.round((img.width - cropSide) / 2);
+  const sy = Math.round((img.height - cropSide) / 2);
+  const outSide = Math.min(640, cropSide);
+  const out = document.createElement("canvas");
+  out.width = outSide;
+  out.height = outSide;
+  out.getContext("2d").drawImage(img, sx, sy, cropSide, cropSide, 0, 0, outSide, outSide);
+  return out.toDataURL("image/png");
 }
 
 async function handlePhotoFile(event) {
@@ -1852,9 +1967,23 @@ editCollectionBtn.addEventListener("click", () => {
     counter.style.fontWeight = len >= 24 ? "600" : "normal";
   }
   saveCollectionNameBtn.disabled = true;
-  
+
+  // Card color — change it live after creation
+  buildColorPicker("editCollectionColorPicker", collection.accent, (accent) => {
+    collection.accent = accent;
+    renderCollections();
+    renderActiveCollection();
+    persistData();
+    showToast(state.lang === "zh" ? "颜色已更新" : "Color updated");
+  });
+
+  // Sharing & visibility — editable after creation
+  document.querySelectorAll("#editCollectionVisibilitySegmented button").forEach(btn => {
+    btn.classList.toggle("is-active", btn.dataset.visibility === collection.visibility);
+  });
+
   renderReorderList();
-  
+
   editCollectionSheet.classList.add("is-open");
   editCollectionSheet.setAttribute("aria-hidden", "false");
   sheetBackdrop.hidden = false;
@@ -1906,6 +2035,22 @@ if (collectionVisibilitySegmented) {
     collectionVisibilitySegmented.querySelectorAll("button").forEach(b => b.classList.remove("is-active"));
     btn.classList.add("is-active");
     selectedCollectionVisibility = btn.dataset.visibility;
+  });
+}
+
+// Edit-sheet visibility — updates the active collection live
+const editCollectionVisibilitySegmented = document.getElementById("editCollectionVisibilitySegmented");
+if (editCollectionVisibilitySegmented) {
+  editCollectionVisibilitySegmented.addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    const collection = activeCollection();
+    if (!collection) return;
+    editCollectionVisibilitySegmented.querySelectorAll("button").forEach(b => b.classList.remove("is-active"));
+    btn.classList.add("is-active");
+    collection.visibility = btn.dataset.visibility;
+    renderActiveCollection();
+    persistData();
   });
 }
 
@@ -1986,20 +2131,20 @@ if (shareCollectionBtn) {
       shareText = `📂 收藏夹: ${collection.title} (${collectionItems.length} 件单品)\n\n`;
       collectionItems.forEach((item, idx) => {
         const ratingStr = item.rating != null ? `, 评分: ${item.rating.toFixed(1)}/10` : "";
-        const priceStr = item.meta.Price ? `, 价格: ${item.meta.Price}` : "";
+        const priceStr = item.meta?.Price ? `, 价格: ${item.meta.Price}` : "";
         const statusStr = item.status === "Owned" ? "已拥有" : "心愿单";
         const tagsStr = item.tags && item.tags.length > 0 ? `\n   标签: ${item.tags.join(", ")}` : "";
-        
+
         shareText += `${idx + 1}. ${item.title} (${statusStr}${ratingStr}${priceStr})${tagsStr}\n`;
       });
     } else {
       shareText = `📂 Collection: ${collection.title} (${collectionItems.length} items)\n\n`;
       collectionItems.forEach((item, idx) => {
         const ratingStr = item.rating != null ? `, Rating: ${item.rating.toFixed(1)}/10` : "";
-        const priceStr = item.meta.Price ? `, Price: ${item.meta.Price}` : "";
+        const priceStr = item.meta?.Price ? `, Price: ${item.meta.Price}` : "";
         const statusStr = item.status;
         const tagsStr = item.tags && item.tags.length > 0 ? `\n   Tags: ${item.tags.join(", ")}` : "";
-        
+
         shareText += `${idx + 1}. ${item.title} (${statusStr}${ratingStr}${priceStr})${tagsStr}\n`;
       });
     }
@@ -2024,11 +2169,35 @@ if (shareCollectionBtn) {
 }
 
 function fallbackCopyToClipboard(text) {
-  navigator.clipboard.writeText(text).then(() => {
-    showToast(i18n[state.lang].toastShareSuccess || "Collection list copied to clipboard!");
-  }).catch(() => {
-    showToast(i18n[state.lang].toastShareFail || "Failed to share or copy collection list");
-  });
+  const ok = () => showToast(i18n[state.lang].toastShareSuccess || "Collection list copied to clipboard!");
+  const fail = () => showToast(i18n[state.lang].toastShareFail || "Failed to share or copy collection list");
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text)
+      .then(ok)
+      .catch(() => { legacyCopy(text) ? ok() : fail(); });
+  } else {
+    legacyCopy(text) ? ok() : fail();
+  }
+}
+
+// Works without the async Clipboard API (older browsers / non-secure contexts).
+function legacyCopy(text) {
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    const done = document.execCommand("copy");
+    document.body.removeChild(ta);
+    return done;
+  } catch {
+    return false;
+  }
 }
 
 const deleteCollectionBtn = document.getElementById("deleteCollectionBtn");
