@@ -1058,7 +1058,7 @@ function renderItemEditForm(item) {
     </div>
     <div class="photo-uploader ${state.editExtractedImage ? "is-extracted" : ""}" id="editPhotoUploader" style="position: relative;">
       <div class="extracted-object ${state.editExtractedImage ? "has-image" : ""}" id="editExtractedObject">
-        ${state.editExtractedImage ? `<img src="${state.editExtractedImage}" alt="Extracted item preview" />` : `<img src="Logo.png" class="uploader-placeholder-img" alt="Placeholder" />`}
+        ${state.editExtractedImage ? `<img src="${state.editExtractedImage}" alt="Extracted item preview" />` : `<img src="Camera.png" class="uploader-placeholder-img" alt="Placeholder" />`}
       </div>
       <span id="editPhotoStatus">
         ${state.editExtractedImage 
@@ -1341,7 +1341,7 @@ function openAddSheet() {
   renderTags();
   itemDate.value = getISODate();
   state.extractedImage = "";
-  extractedObject.innerHTML = `<img src="Logo.png" class="uploader-placeholder-img" alt="Placeholder" />`;
+  extractedObject.innerHTML = `<img src="Camera.png" class="uploader-placeholder-img" alt="Placeholder" />`;
   extractedObject.classList.remove("has-image");
   
   const uploader = document.querySelector("#photoUploader");
