@@ -1741,15 +1741,17 @@ function extractObjectFromImage(file) {
 }
 
 // Isolate the main subject from a (possibly cluttered) photo:
-//   1. Region-grow the background inward from the border — flows around
-//      gradients/vignettes but stops at the subject's edge.
-//   2. Keep only the single foreground blob with the best area×centredness
-//      score, dropping stray clutter elsewhere in the frame.
-//   3. Feather the mask edge, then tight-crop to the subject.
-// Falls back to a centred square crop when the mask looks unreliable
-// (e.g. the subject fills the whole frame or nothing distinct is found).
+//   1. Sample the border region into a colour palette — a messy background
+//      contributes many palette entries, not just one average.
+//   2. Flood the background inward from the border. A pixel joins the
+//      background if it is locally similar to its neighbour OR matches any
+//      border-palette colour, so the flood flows across clutter instead of
+//      stalling at the first edge it meets.
+//   3. Keep only the foreground blob with the best area×centredness score,
+//      feather its edge, and tight-crop to its actual shape.
+// Falls back to a centred square crop only when the mask looks unreliable.
 function isolateSubject(img) {
-  const maxSize = 640;
+  const maxSize = 560;
   const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
   const w = Math.max(1, Math.round(img.width * scale));
   const h = Math.max(1, Math.round(img.height * scale));
@@ -1763,11 +1765,45 @@ function isolateSubject(img) {
   const d = imageData.data;
   const N = w * h;
 
-  // ── 1. Region-grow background inward from the border ──
+  // ── 1. Border-colour palette (top clusters from a 4px ring) ──
+  const buckets = new Map();
+  const ring = 4;
+  let ringCount = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (x >= ring && y >= ring && x < w - ring && y < h - ring) continue;
+      const i = (y * w + x) * 4;
+      const key = ((d[i] >> 4) << 8) | ((d[i + 1] >> 4) << 4) | (d[i + 2] >> 4);
+      let b = buckets.get(key);
+      if (!b) { b = [0, 0, 0, 0]; buckets.set(key, b); }
+      b[0] += d[i]; b[1] += d[i + 1]; b[2] += d[i + 2]; b[3]++;
+      ringCount++;
+    }
+  }
+  const clusters = [...buckets.values()]
+    .filter(b => b[3] >= ringCount * 0.01) // ignore one-off noise colours
+    .sort((a, b) => b[3] - a[3])
+    .slice(0, 16)
+    .map(b => [b[0] / b[3], b[1] / b[3], b[2] / b[3]]);
+
+  const T2 = 48 * 48; // squared RGB distance for "matches a border colour"
+  const matchesPalette = (i) => {
+    for (let c = 0; c < clusters.length; c++) {
+      const dr = d[i] - clusters[c][0];
+      const dg = d[i + 1] - clusters[c][1];
+      const db = d[i + 2] - clusters[c][2];
+      if (dr * dr + dg * dg + db * db < T2) return true;
+    }
+    return false;
+  };
+
+  // ── 2. Flood background inward: local similarity OR palette match ──
+  // Palette matches must still be *connected* to the border, so subject
+  // details that happen to share a background colour don't get punched out.
   const isBg = new Uint8Array(N);
   const stack = new Int32Array(N);
   let sp = 0;
-  const TOL = 40; // max per-pixel channel-sum difference to count as "same region"
+  const TOL = 34; // per-pixel channel-sum difference for "same smooth region"
   const seed = (p) => { if (!isBg[p]) { isBg[p] = 1; stack[sp++] = p; } };
   for (let x = 0; x < w; x++) { seed(x); seed((h - 1) * w + x); }
   for (let y = 0; y < h; y++) { seed(y * w); seed(y * w + (w - 1)); }
@@ -1780,7 +1816,7 @@ function isolateSubject(img) {
       if (isBg[np]) return;
       const ni = np * 4;
       const dist = Math.abs(d[pi] - d[ni]) + Math.abs(d[pi + 1] - d[ni + 1]) + Math.abs(d[pi + 2] - d[ni + 2]);
-      if (dist <= TOL) { isBg[np] = 1; stack[sp++] = np; }
+      if (dist <= TOL || matchesPalette(ni)) { isBg[np] = 1; stack[sp++] = np; }
     };
     if (x > 0) tryN(p - 1);
     if (x < w - 1) tryN(p + 1);
@@ -1829,11 +1865,12 @@ function isolateSubject(img) {
 
   // ── Fallback when the mask is untrustworthy ──
   const frac = fg / N;
-  if (fg === 0 || frac < 0.03 || frac > 0.97) return centerCrop(img);
+  if (fg === 0 || frac < 0.02 || frac > 0.98) return centerCrop(img);
 
-  // ── 3. Feather the 1px rim to kill jagged edges ──
+  // ── 3. Feather a 2px rim so the cut-out edge is smooth, not jagged ──
   const alpha = new Uint8ClampedArray(N);
   for (let p = 0; p < N; p++) alpha[p] = d[p * 4 + 3];
+  const rim1 = [];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const p = y * w + x;
@@ -1841,7 +1878,19 @@ function isolateSubject(img) {
       const rim =
         (x > 0 && !alpha[p - 1]) || (x < w - 1 && !alpha[p + 1]) ||
         (y > 0 && !alpha[p - w]) || (y < h - 1 && !alpha[p + w]);
-      if (rim) d[p * 4 + 3] = 130;
+      if (rim) { d[p * 4 + 3] = 110; rim1.push(p); }
+    }
+  }
+  const isRim1 = new Uint8Array(N);
+  rim1.forEach(p => { isRim1[p] = 1; });
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const p = y * w + x;
+      if (!alpha[p] || isRim1[p]) continue;
+      const nearRim =
+        (x > 0 && isRim1[p - 1]) || (x < w - 1 && isRim1[p + 1]) ||
+        (y > 0 && isRim1[p - w]) || (y < h - 1 && isRim1[p + w]);
+      if (nearRim) d[p * 4 + 3] = 200;
     }
   }
   ctx.putImageData(imageData, 0, 0);

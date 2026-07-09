@@ -212,7 +212,7 @@ p {
   display: none;
   height: 100%;
   overflow-y: auto;
-  padding: 134px 18px 112px; /* Top padding (118 old shell offset + 16) keeps content below the header at rest; matches the previous layout exactly. */
+  padding: 92px 18px 112px; /* Topbar ends at 76px; 92 leaves a 16px gap between the header and content on every screen. */
   scrollbar-width: none;
 }
 
@@ -874,7 +874,7 @@ p {
   justify-content: space-between;
   gap: 10px;
   align-items: center;
-  margin: 12px 0;
+  margin: 0 0 12px; /* .screen's padding provides the 16px gap below the header */
 }
 
 .icon-segmented {
@@ -2196,6 +2196,7 @@ input:disabled {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  margin-top: 8px; /* settings' topbar is 8px taller (kicker line shows); this keeps the header gap at 16px */
   animation: settingsFadeIn 320ms var(--spring) both;
 }
 
@@ -2670,7 +2671,7 @@ body.dark-mode .floating-add-btn {
   flex-direction: column;
   gap: 0;
   width: 100%;
-  padding-top: 16px;
+  padding-top: 0; /* .screen's padding already provides the 16px gap below the header */
   padding-bottom: 32px;
 }
 
